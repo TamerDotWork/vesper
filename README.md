@@ -66,9 +66,26 @@ load → clean → analyze → validate → score → explain
 ### Installation
 
 ```bash
+# download source code
 git clone https://github.com/TamerDotWork/vesper
 cd vesper
+
+# create virtual environment
+python -m venv venv
+
+# activate it
+# Windows
+venv\Scripts\activate
+
+# or
+
+# Mac / Linux
+source venv/bin/activate
+
+# install dependencies
 pip install -r requirements.txt
+
+# run vesper
 python app.py
 
 ```
