@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://ai.tamer.work/vesper.ai/">
-    <img src="https://github.com/tamerdotwork/vesper/raw/main/.github/cover.png" alt="Vesper Banner" width="100%">
+    <img src="https://github.com/TamerDotWork/vesper/blob/main/cover.png" alt="Vesper Banner" width="100%">
   </a>
 </p>
 
@@ -18,7 +18,7 @@
 <br/>
 
 <div align="center">
-  <img src="https://github.com/tamerdotwork/vesper/raw/main/.github/screenshot.png" alt="Vesper Demo" width="900" style="border-radius: 16px;">
+  <img src="https://github.com/TamerDotWork/vesper/blob/main/screenshot.png" alt="Vesper Demo" width="900" style="border-radius: 16px;">
 </div>
 
 <br>
