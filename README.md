@@ -18,7 +18,7 @@
 <br/>
 
 <div align="center">
-  <img src="https://github.com/TamerDotWork/vesper/blob/main/cover.png" alt="Vesper Demo" width="900" style="border-radius: 16px;">
+  <img src="https://github.com/TamerDotWork/vesper/blob/main/screenshot.png" alt="Vesper Demo" width="900" style="border-radius: 16px;">
 </div>
 
 <br>
