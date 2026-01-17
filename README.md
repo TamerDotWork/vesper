@@ -135,8 +135,8 @@ Analyze your dataset at the platform website.
 ```bash
 export VESPER_LLM="google/gemeni-pro-latest"
 export LLM_API_KEY="your-api-key"
-export LLM_API_BASE="local-endpoint"
-export VESPER_REASONING="high"
+export VESPER_BASE="localhost"
+export VESPER_PORT="5000"
 ```
 
 Recommended models:
@@ -151,18 +151,6 @@ Recommended models:
 ## Documentation
 
 See the documentation website for full guides.
-
----
-
-## Contributing
-
-Contributions are welcome through pull requests.
-
----
-
-## Join Our Community
-
-Community links are available above.
 
 ---
 
