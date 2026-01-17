@@ -170,7 +170,7 @@ Built with:
 
 </div>
 <p align="center">
-  <a href="https://vesper.ai/">
+  <a href="https://ai.tamer.work">
     <img src="https://github.com/TamerDotWork/vesper/blob/main/logo.jpg" alt="Vesper Banner" width="auto" style="border-radius: 56px;">
   </a>
 </p>
