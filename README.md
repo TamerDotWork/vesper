@@ -142,11 +142,6 @@ Recommended models:
 - Local Llama 3
 
 ---
-<p align="center">
-  <a href="https://vesper.ai/">
-    <img src="https://github.com/TamerDotWork/vesper/blob/main/logo.jpg" alt="Vesper Banner" width="auto" style="border-radius: 56px;">
-  </a>
-</p>
 
 ## Documentation
 
@@ -174,3 +169,8 @@ Built with:
 > Always review AI-applied transformations before production use.
 
 </div>
+<p align="center">
+  <a href="https://vesper.ai/">
+    <img src="https://github.com/TamerDotWork/vesper/blob/main/logo.jpg" alt="Vesper Banner" width="auto" style="border-radius: 56px;">
+  </a>
+</p>
