@@ -73,8 +73,9 @@ load → clean → analyze → validate → score → explain
 ```bash
 git clone https://github.com/TamerDotWork/vesper
 cd vesper
+pip install -r requirements.txt
 python app.py
-```
+
 
 ### First Run
 
@@ -177,8 +178,8 @@ Built with:
 
 - LangChain  
 - Pandas  
-- OpenAI  
-- LiteLLM  
+- Gemeni  
+
 
 
 > [!WARNING]
