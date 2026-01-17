@@ -5,416 +5,88 @@ import pandas as pd
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List, Callable
-
-from flask import Flask, render_template, request, jsonify
-
 # Optional: Scipy for Z-Score outliers
 try:
     from scipy.stats import zscore
 except ImportError:
     zscore = None
 
+from flask import Flask, render_template, request, jsonify, url_for
 # ------------------------
-# Data Quality Engine
+# Normalization Helper
 # ------------------------
-@dataclass
-class IssueSample:
-    rows: List[Dict[str, Any]] = field(default_factory=list)
 
-class DataQualityEngine:
-    """Generic Data Quality Engine."""
+def check_normalization_issues(df: pd.DataFrame, threshold: int = 5) -> Dict[str, int]:
+ 
+    normalization_issues = {}
+    
+    # Select object (string) columns
+    object_cols = df.select_dtypes(include=['object', 'category']).columns
 
-    def __init__(
-        self,
-        df: pd.DataFrame,
-        name: str = "dataset",
-        validation_rules: Optional[Dict[str, Callable[[pd.Series], pd.Series]]] = None,
-        sample_size: int = 5,
-    ):
-        if not isinstance(df, pd.DataFrame):
-            raise ValueError("df must be a pandas DataFrame")
+    for col in object_cols:
+        # Drop NaNs for the unique count
+        col_data = df[col].astype(str).dropna()
+        if col_data.empty:
+            continue
 
-        self.df = df.copy()
-        self.name = name
-        self.sample_size = sample_size
-        self.validation_rules = validation_rules or {}
+        # Count unique values before normalization
+        unique_count_original = col_data.nunique()
         
-        # Detect numeric columns (already clean)
-        self.numeric_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
-        self.text_cols = self.df.select_dtypes(include=["object", "string"]).columns.tolist()
-        self.datetime_cols = self._detect_datetime_columns()
-
-    def _detect_datetime_columns(self) -> List[str]:
-        dt_cols = []
-        for col in self.df.columns:
-            if pd.api.types.is_datetime64_any_dtype(self.df[col]):
-                dt_cols.append(col)
-                continue
-            try:
-                # heuristic: try parsing a small sample
-                sample = self.df[col].dropna().astype(str).head(10)
-                if sample.empty: continue
-                parsed = pd.to_datetime(sample, errors="coerce")
-                if parsed.notna().sum() >= max(1, len(sample) // 2):
-                    dt_cols.append(col)
-            except Exception:
-                pass
-        return dt_cols
-
-    def _sample_rows(self, mask: pd.Series) -> List[Dict[str, Any]]:
-        try:
-            # Replace NaN with None for JSON compatibility
-            rows = self.df.loc[mask].head(self.sample_size).replace({np.nan: None}).to_dict(orient="records")
-        except Exception:
-            rows = []
-        return rows
-
-    # --- Scans ---
-
-    def scan_missing(self) -> Dict[str, Any]:
-        missing_counts = self.df.isna().sum().to_dict()
-        total_missing = int(self.df.isna().sum().sum())
-        percent_missing_by_col = (self.df.isna().mean() * 100).round(3).to_dict()
-
-        details = {}
-        for col, cnt in missing_counts.items():
-            if cnt > 0:
-                mask = self.df[col].isna()
-                details[col] = {
-                    "missing_count": int(cnt),
-                    "missing_pct": float(percent_missing_by_col[col]),
-                    "sample_rows": self._sample_rows(mask)
-                }
-
-        return {
-            "metric": "completeness",
-            "total_missing": total_missing,
-            "missing_by_column": missing_counts,
-            "missing_by_column_pct": percent_missing_by_col,
-            "details": details
-        }
-
-    def scan_duplicates(self) -> Dict[str, Any]:
-        dup_mask = self.df.duplicated(keep="first")
-        dup_count = int(dup_mask.sum())
-        dup_samples = self._sample_rows(dup_mask)
-        dup_summary = {}
-        if dup_count > 0:
-            grouped = (
-                self.df[dup_mask]
-                .astype(str)
-                .apply(lambda r: "|".join(r.values.tolist()), axis=1)
-                .value_counts()
-                .head(10)
-                .to_dict()
-            )
-            dup_summary = grouped
-        return {
-            "metric": "uniqueness",
-            "duplicate_count": dup_count,
-            "duplicate_samples": dup_samples,
-            "duplicate_summary_top": dup_summary
-        }
-
-    def scan_schema_types(self) -> Dict[str, Any]:
-        dtype_map = {col: str(self.df[col].dtype) for col in self.df.columns}
-
-        # Count the most frequent datatype
-        dtype_counts = {}
-        for dtype in dtype_map.values():
-            dtype_counts[dtype] = dtype_counts.get(dtype, 0) + 1
-
-        most_common_dtype = max(dtype_counts, key=dtype_counts.get)
-
-        return {
-            "metric": "schema",
-            "dtypes": dtype_map,
-            "datetime_columns_detected": self.datetime_cols,
-            "most_common_dtype": {
-                "dtype": most_common_dtype,
-                "count": dtype_counts[most_common_dtype],
-                "percentage": round((dtype_counts[most_common_dtype] / len(self.df.columns)) * 100, 2)
-            }
-        }
-
-
-    def scan_invalid(self) -> Dict[str, Any]:
-        """
-        Checks specific business logic constraints.
-        FIX APPLIED: Ensures comparisons are done on coerced numeric series 
-        to avoid TypeError (str < int).
-        """
-        invalid_report = {}
-        total_invalid = 0
-
-        # 1. Check Age (0 - 120)
-        if "Age" in self.df.columns:
-            # Force conversion to numeric first (non-numeric becomes NaN)
-            age_numeric = pd.to_numeric(self.df["Age"], errors="coerce")
-            
-            # Invalid if: It wasn't a number (NaN) OR it is out of range
-            # Note: We must handle NaN carefully. isna() catches the text strings.
-            mask = (age_numeric.isna()) | (age_numeric < 0) | (age_numeric > 120)
-            
-            # If the original column had actual NaNs that shouldn't count as 'Invalid' logic 
-            # (since that's 'Missing' logic), we can refine. 
-            # But usually for 'Age', NaN is considered invalid data availability in this context.
-            # To be strict: Only count as invalid if it was a string that failed conversion, or a number out of range.
-            # However, for simplicity/robustness, we stick to the previous logic:
-            
-            count = int(mask.sum())
-            if count > 0:
-                invalid_report["Age"] = {
-                    "count": count,
-                    "reason": "Age should be numeric and between 0 and 120",
-                    "sample_rows": self._sample_rows(mask)
-                }
-                total_invalid += count
-
-        # 2. Check Salary (> 0)
-        if "Salary" in self.df.columns:
-            sal_numeric = pd.to_numeric(self.df["Salary"], errors="coerce")
-            mask = (sal_numeric.isna()) | (sal_numeric <= 0)
-            count = int(mask.sum())
-            if count > 0:
-                invalid_report["Salary"] = {
-                    "count": count,
-                    "reason": "Salary should be numeric and > 0",
-                    "sample_rows": self._sample_rows(mask)
-                }
-                total_invalid += count
-
-        # 3. Check Text Columns for Numeric-Only values (e.g. name="12345")
-        for col in self.text_cols:
-            mask = self.df[col].astype(str).str.match(r"^\d+$", na=False)
-            count = int(mask.sum())
-            if count > 0:
-                invalid_report[col] = {
-                    "count": count,
-                    "reason": "Text column contains numeric-only values",
-                    "sample_rows": self._sample_rows(mask)
-                }
-                total_invalid += count
-
-        # 4. Custom Rules
-        for col, rule_fn in self.validation_rules.items():
-            if col not in self.df.columns:
-                continue
-            try:
-                mask = rule_fn(self.df[col])
-                if not isinstance(mask, pd.Series):
-                    continue
-                count = int(mask.sum())
-                if count > 0:
-                    invalid_report[f"custom:{col}"] = {
-                        "count": count,
-                        "reason": "Custom validation rule triggered",
-                        "sample_rows": self._sample_rows(mask)
-                    }
-                    total_invalid += count
-            except Exception as e:
-                invalid_report[f"custom_error:{col}"] = {"count": 0, "reason": str(e)}
-
-        return {
-            "metric": "validity",
-            "total_invalid": total_invalid,
-            "invalid_by_field": invalid_report
-        }
-
-    def scan_outliers(self, method: str = "iqr", iqr_multiplier: float = 1.5, zscore_threshold: float = 3.0) -> Dict[str, Any]:
-        result = {"metric": "outliers", "method": method, "columns": {}}
+        # Count unique values after normalization (lowercase and strip)
+        unique_count_normalized = col_data.str.lower().str.strip().nunique()
         
-        # Only scan columns that were detected as numeric by Pandas
-        for col in self.numeric_cols:
-            series = self.df[col].dropna().astype(float)
-            if series.empty:
-                continue
-            masks = []
+        # The number of potential non-normalized values is the difference
+        issue_count = unique_count_original - unique_count_normalized
+        
+        # Only consider it an issue if the difference is significant
+        # We use 'issue_count' as a proxy for the number of *distinct* non-normalized values
+        if issue_count > 0:
+            # For the penalty, we estimate the number of *cells* containing these issues.
+            # We count all occurrences of the original unique values that are "duplicates" 
+            # after normalization. This is a robust estimate.
             
-            # IQR
-            if method in ("iqr", "both"):
-                q1 = series.quantile(0.25)
-                q3 = series.quantile(0.75)
-                iqr = q3 - q1
-                lower = q1 - iqr_multiplier * iqr
-                upper = q3 + iqr_multiplier * iqr
+            normalized_values = col_data.str.lower().str.strip()
+            
+            # Map original unique values to their normalized forms
+            norm_map = normalized_values.to_dict()
+            
+            # Count the occurrences of unique normalized values
+            normalized_value_counts = normalized_values.value_counts()
+            
+            # Identify which normalized values have multiple original spellings
+            problematic_normalized_values = normalized_value_counts[normalized_value_counts > 1].index
+            
+            # Sum the counts of all original values that map to a problematic normalized value
+            # This is the total count of cells that contribute to the normalization issue
+            total_issue_cells = 0
+            for norm_val in problematic_normalized_values:
+                # Find all original values that map to this normalized value
+                original_values = col_data[normalized_values == norm_val].unique()
                 
-                # Compare against the numeric series, not the dataframe column (safer)
-                mask_iqr = (series < lower) | (series > upper)
+                # We count all occurrences *except* for one representative spelling.
+                # A simpler approach is to count all, and the penalty factor handles the severity.
                 
-                # Realign mask to original dataframe index
-                final_mask = pd.Series(False, index=self.df.index)
-                final_mask.loc[mask_iqr.index] = mask_iqr
-                
-                masks.append(("iqr", final_mask, {"lower": float(lower), "upper": float(upper)}))
+                # A robust way to count the total cells that *need* fixing
+                total_issue_cells += col_data[normalized_values == norm_val].count()
             
-            # Z-Score
-            if method in ("zscore", "both") and zscore is not None:
-                scores = zscore(series)
-                z_bools = np.abs(scores) > zscore_threshold
-                
-                final_mask = pd.Series(False, index=self.df.index)
-                final_mask.loc[series.index] = z_bools
-                
-                masks.append(("zscore", final_mask, {"threshold": zscore_threshold}))
+            # We use the difference as a simpler, representative measure for the quality score.
+            # Using the count of original unique values that are effectively duplicates post-normalization.
+            if issue_count > threshold:
+                 # issue_count is the number of distinct original values (e.g., 'Cairo', 'cairo') 
+                 # that collapse into a single normalized value (e.g., 'cairo').
+                 # Use this difference for the penalty.
+                 normalization_issues[col] = issue_count
 
-            # Combine
-            combined_mask = pd.Series(False, index=self.df.index)
-            details = {}
-            for name, mask, meta in masks:
-                combined_mask = combined_mask | mask
-                details[name] = {
-                    "count": int(mask.sum()),
-                    "meta": meta,
-                }
-            
-            total = int(combined_mask.sum())
-            if total > 0:
-                result["columns"][col] = {
-                    "outlier_count": total,
-                    "details": details,
-                    "sample_rows": self._sample_rows(combined_mask)
-                }
-        return result
-
-    def scan_skewness(self) -> Dict[str, Any]:
-        skew_vals = {}
-        for col in self.numeric_cols:
-            try:
-                val = float(self.df[col].skew(skipna=True))
-                skew_vals[col] = round(val, 6)
-            except Exception:
-                skew_vals[col] = None
-        heavy = {c: v for c, v in skew_vals.items() if v is not None and abs(v) > 1.0}
-        return {
-            "metric": "skewness",
-            "skew_values": skew_vals,
-            "heavy_skew_columns": heavy
-        }
-
-    def scan_correlation(self, threshold: float = 0.5, method: str = "pearson") -> Dict[str, Any]:
-        if not self.numeric_cols or len(self.numeric_cols) < 2:
-            return {"metric": "correlation", "pairs": {}}
-        corr = self.df[self.numeric_cols].corr(method=method)
-        pairs = {}
-        cols = corr.columns.tolist()
-        for i, c1 in enumerate(cols):
-            for j in range(i+1, len(cols)):
-                c2 = cols[j]
-                val = corr.at[c1, c2]
-                if pd.isna(val):
-                    continue
-                if abs(val) >= threshold:
-                    pairs[f"{c1}__{c2}"] = round(float(val), 6)
-        return {"metric": "correlation", "method": method, "threshold": threshold, "pairs": pairs}
-
-    def scan_text_quality(self) -> Dict[str, Any]:
-        report = {}
-        for col in self.text_cols:
-            ser = self.df[col].astype(str).replace({"nan": None, "None": None})
-            non_null = ser.dropna()
-            if non_null.empty:
-                continue
-            lengths = non_null.map(len)
-            numeric_only = non_null.str.match(r"^\d+$", na=False).sum()
-            distinct = int(non_null.nunique(dropna=True))
-            avg_len = float(lengths.mean())
-            report[col] = {
-                "avg_length": round(avg_len, 3),
-                "numeric_only_count": int(numeric_only),
-                "distinct_count": distinct,
-                "missing_pct": float(1 - len(non_null) / len(self.df)) * 100
-            }
-        return {"metric": "text_quality", "columns": report}
-
-    def data_quality_score(self, weights: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
-        w = weights or {
-            "completeness": 0.35,
-            "validity": 0.25,
-            "uniqueness": 0.15,
-            "schema": 0.15,
-            "text_quality": 0.10
-        }
-        total_cells = self.df.size
-        total_missing = int(self.df.isna().sum().sum())
-        completeness_pct = (1 - total_missing / max(1, total_cells)) * 100
-        
-        invalid_data = self.scan_invalid()
-        invalid = invalid_data.get("total_invalid", 0)
-        validity_pct = max(0.0, (1 - invalid / max(1, len(self.df))) * 100)
-        
-        dup_count = int(self.df.duplicated().sum())
-        uniqueness_pct = (1 - dup_count / max(1, len(self.df))) * 100
-        
-        dtype_score = 100.0
-        num_obj_numeric = sum(1 for c in self.numeric_cols if self.df[c].dtype == object)
-        if num_obj_numeric:
-            dtype_score -= min(20, 5 * num_obj_numeric)
-            
-        text_q = self.scan_text_quality()
-        numeric_only_total = sum(v.get("numeric_only_count", 0) for v in text_q.get("columns", {}).values())
-        text_quality_pct = max(0.0, (1 - numeric_only_total / max(1, len(self.df))) * 100)
-        
-        score = (
-            completeness_pct * w.get("completeness", 0) +
-            validity_pct * w.get("validity", 0) +
-            uniqueness_pct * w.get("uniqueness", 0) +
-            dtype_score * w.get("schema", 0) +
-            text_quality_pct * w.get("text_quality", 0)
-        )
-        return {
-            "metric": "data_quality_score",
-            "score": round(float(score), 3),
-            "components": {
-                "completeness_pct": round(float(completeness_pct), 3),
-                "validity_pct": round(float(validity_pct), 3),
-                "uniqueness_pct": round(float(uniqueness_pct), 3),
-                "schema_pct": round(float(dtype_score), 3),
-                "text_quality_pct": round(float(text_quality_pct), 3)
-            },
-            "weights": w
-        }
-
-    def run_all(self, outlier_method: str = "iqr", correlation_threshold: float = 0.5) -> Dict[str, Any]:
-        result = {
-            "dataset_name": self.name,
-            "row_count": int(len(self.df)),
-            "column_count": int(len(self.df.columns)),
-            "scans": {}
-        }
-        result["scans"]["schema"] = self.scan_schema_types()
-        result["scans"]["missing"] = self.scan_missing()
-        result["scans"]["duplicates"] = self.scan_duplicates()
-        result["scans"]["invalid"] = self.scan_invalid()
-        result["scans"]["outliers"] = self.scan_outliers(method=outlier_method)
-        result["scans"]["skewness"] = self.scan_skewness()
-        result["scans"]["correlation"] = self.scan_correlation(threshold=correlation_threshold)
-        result["scans"]["text_quality"] = self.scan_text_quality()
-        result["scans"]["quality_score"] = self.data_quality_score()
-        return result
-
-    def get_clean_json(self, result: Dict[str, Any]) -> Any:
-        return json.loads(json.dumps(result, default=self._json_fallback))
-
-    @staticmethod
-    def _json_fallback(o):
-        if isinstance(o, (np.integer,)):
-            return int(o)
-        if isinstance(o, (np.floating,)):
-            return float(o)
-        if isinstance(o, (np.ndarray,)):
-            return o.tolist()
-        if pd.isna(o):
-            return None
-        try:
-            return str(o)
-        except Exception:
-            return None
+    return normalization_issues
 
 # ------------------------
 # Flask Application
 # ------------------------
 app = Flask(__name__)
+# Route 2: The Dashboard Page (Frontend will redirect here)
+@app.route('/config', methods=['GET'])
+def config():
+    return render_template('config.html')
 
 # Route 1: The Upload Page
 @app.route('/', methods=['GET'])
@@ -422,16 +94,16 @@ def index():
     return render_template('index.html')
 
 # Route 2: The Dashboard Page (Frontend will redirect here)
-@app.route('/dashboard', methods=['GET'])
-def dashboard():
-    return render_template('dashboard.html')
+@app.route('/explore', methods=['GET'])
+def explore():
+    return render_template('explore.html')
 
 # Route 3: The API to Process the file
 @app.route('/api', methods=['POST'])
 def api():
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
-    
+        
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
@@ -446,19 +118,154 @@ def api():
             df = pd.read_json(file)
         else:
             return jsonify({"error": "Unsupported file type. Please upload .csv or .json"}), 400
-
-        # Run Engine
-        engine = DataQualityEngine(df, name=file.filename, sample_size=5)
-        raw_result = engine.run_all()
         
-        # Clean Result (handle NaNs, Infinities for JSON)
-        clean_result = engine.get_clean_json(raw_result)
-        
-        # Return JSON. The Frontend 'index.html' receives this, saves it, and redirects to /dashboard
-        return jsonify(clean_result)
 
+        # ---- Most frequent dtype ----
+        dtype_counts = df.dtypes.value_counts()
+        most_frequent_dtype = str(dtype_counts.index[0]) if len(dtype_counts) > 0 else None
+
+        # ---- Invalid fields per column (only include if count > 0) ----
+        invalid_fields = {}
+        missing_count = 0
+        for col in df.columns:
+            # Missing values
+            missing_col_count = int(df[col].isna().sum())
+            missing_count += missing_col_count
+            
+            # Non-numeric in numeric columns
+            non_numeric_invalid = 0
+            # Check if column is supposed to be numeric and contains non-numeric strings
+            if pd.api.types.is_numeric_dtype(df[col]) and df[col].dtype != 'object':
+                pass # Already numeric, no need to check for non-numeric strings
+            elif not pd.api.types.is_numeric_dtype(df[col]):
+                 # Attempt to coerce to numeric, errors='coerce' turns non-numeric to NaN
+                 # Count how many non-NaNs in original column become NaNs after coercion
+                 original_non_nan = df[col].notna().sum()
+                 coerced_non_nan = pd.to_numeric(df[col], errors='coerce').notna().sum()
+                 non_numeric_invalid = int(original_non_nan - coerced_non_nan)
+                 
+            
+            total_invalid = missing_col_count + non_numeric_invalid
+            if total_invalid > 0:
+                invalid_fields[col] = total_invalid
+
+        # ---- PII Detection ----
+        pii_keywords = ["name", "email", "phone", "address", "id", "ssn"]
+        pii_fields = [
+            col for col in df.columns
+            if any(keyword in col.lower() for keyword in pii_keywords)
+        ]
+
+        # ---- Duplicate Rows ----
+        duplicate_count = int(df.duplicated().sum())
+
+        # ---- Normalization Issues (New Criterion) ----
+        # normalization_issue_count is the count of columns with issues
+        # normalization_issues contains {column: issue_count_proxy}
+        normalization_issues = check_normalization_issues(df, threshold=1)
+        # For simplicity in quality score, we count the number of columns with normalization issues
+        normalization_issue_cols_count = len(normalization_issues)
+
+        # ---- Distribution & Outliers ----
+        distribution = {}
+        outliers = {}
+
+        numeric_cols = df.select_dtypes(include=np.number).columns
+
+        # Ensure zscore is available
+        if zscore is not None:
+            for col in numeric_cols:
+                col_data = df[col].dropna()  # ignore NaNs for stats
+                if col_data.empty:
+                    continue
+                
+                # Distribution stats
+                distribution[col] = {
+                    "mean": float(col_data.mean()),
+                    "median": float(col_data.median()),
+                    "min": float(col_data.min()),
+                    "max": float(col_data.max()),
+                    "std": float(col_data.std()),
+                    "25%": float(col_data.quantile(0.25)),
+                    "50%": float(col_data.quantile(0.5)),
+                    "75%": float(col_data.quantile(0.75))
+                }
+                
+                # Outliers (using Z-score threshold > 3)
+                if len(col_data) > 1:
+                    z_scores = np.abs(zscore(col_data))
+                    outlier_count = int((z_scores > 3).sum())
+                    if outlier_count > 0:  # include only if there are outliers
+                        outliers[col] = outlier_count
+        else:
+            print("Warning: scipy.stats.zscore is not available. Skipping outlier and detailed distribution analysis.")
+
+        # ---- Correlation ----
+        correlation_threshold = 0.5  # only return correlations above this
+        correlation = {}
+
+        if len(numeric_cols) > 1:
+            corr_matrix = df[numeric_cols].corr(method='pearson')
+            # Iterate upper triangle to avoid duplicate pairs
+            for i, col1 in enumerate(corr_matrix.columns):
+                for j, col2 in enumerate(corr_matrix.columns):
+                    if j > i:  # upper triangle
+                        corr_value = float(corr_matrix.iloc[i, j])
+                        if abs(corr_value) >= correlation_threshold:
+                            pair_name = f"{col1}__{col2}"
+                            correlation[pair_name] = corr_value
+
+        total_cells = df.shape[0] * df.shape[1]
+
+        # ---- Missing / Invalid Fields Penalty ----
+        total_invalid = sum(invalid_fields.values())
+        invalid_penalty = total_invalid / total_cells  # fraction of invalid cells
+
+        # ---- Duplicate Rows Penalty ----
+        duplicate_penalty = duplicate_count / df.shape[0]  # fraction of duplicate rows
+
+        # ---- Outliers Penalty ----
+        total_outliers = sum(outliers.values())
+        outlier_penalty = total_outliers / total_cells  # fraction of outlier cells
+        
+        # ---- Normalization Penalty (New) ----
+        # Use a penalty based on the number of columns with normalization issues
+        # normalized by the total number of columns.
+        normalization_penalty = normalization_issue_cols_count / df.shape[1] if df.shape[1] > 0 else 0
+        # You may want to weight this penalty lower than the others as it's a column-level issue.
+        # Let's use a weight of 0.5 for the normalization penalty relative to other penalties.
+        weighted_normalization_penalty = 0.5 * normalization_penalty
+
+        # ---- Combine penalties to compute quality score ----
+        # Higher penalties → lower score, scale 0-100
+        total_penalty = invalid_penalty + duplicate_penalty + outlier_penalty + weighted_normalization_penalty
+        score = 100 * (1 - total_penalty)
+        score = max(0, min(100, score))  # ensure between 0-100
+    
+        total_cells = int(df.shape[1]) * int(df.shape[0])
+        return jsonify({
+            "quality_score": int(round(score, 0)),
+            "dataset_name": file.filename,
+
+            "row_count": int(df.shape[0]),
+            "column_count": int(df.shape[1]),
+            "most_frequent_dtype": most_frequent_dtype,
+            "preview": df.head(5).to_dict(orient='records'),
+
+            "missing_score": ( int(missing_count ) / total_cells )  * 100,  # as percentage of total cells),
+            "missing_count": int(missing_count ) ,  # as percentage of total cells),
+            "duplicate_count": int(duplicate_count),
+            "invalid_fields": {str(k): int(v) for k, v in invalid_fields.items()},
+            "pii_fields": pii_fields,
+            "normalization_issues": normalization_issues, # New field
+            "distribution": distribution,
+            "outliers": outliers,
+            "correlation": correlation
+        })
+        
     except Exception as e:
         return jsonify({"error": f"Processing failed: {str(e)}"}), 500
-
+    
+    
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5006, debug=True)
+    app.run(host='0.0.0.0', debug=True)
