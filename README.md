@@ -73,7 +73,8 @@ cd vesper
 # create virtual environment
 python -m venv venv
 
-# activate it
+# activation
+
 # Windows
 venv\Scripts\activate
 
