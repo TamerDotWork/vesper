@@ -19,7 +19,7 @@
 <br>
 
 > [!TIP]
-> **New!** Vesper transforms raw messy datasets into governed, analysis-ready data using only natural language instructions.
+> Vesper transforms raw messy datasets into governed, analysis-ready data using only simple steps.
 
 ---
 
