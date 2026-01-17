@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://ai.tamer.work/vesper.ai/">
+  <a href="https://vesper.ai/">
     <img src="https://github.com/TamerDotWork/vesper/blob/main/cover.png" alt="Vesper Banner" width="100%">
   </a>
 </p>
@@ -68,25 +68,20 @@ load → clean → analyze → validate → score → explain
 - Python 3.10+  
 - LLM provider key
 
-### Install
-
-Use one of the following commands:
+### Installation
 
 ```bash
-pipx install vesper-agent
-```
-
-```bash
-pip install vesper-agent
+git clone https://github.com/TamerDotWork/vesper
+cd vesper
+python app.py
 ```
 
 ### First Run
 
 ```bash
-export VESPER_LLM="openai/gpt-4o"
+export VESPER_LLM="google/gemeni-pro-latest"
 export LLM_API_KEY="your-api-key"
 
-vesper --file dataset.csv --goal "clean dataset and measure overall quality"
 ```
 
 > [!NOTE]
@@ -131,40 +126,13 @@ Analyze your dataset at the platform website.
 - Validator → quality  
 - Reporter → insights
 
----
-
-## Usage Examples
-
-### Basic
-
-```bash
-vesper --file sales.csv
-```
-
-### With Instruction
-
-```bash
-vesper --file customers.xlsx --instruction "normalize columns and compute quality score"
-```
-
-### Multi File
-
-```bash
-vesper -f jan.csv -f feb.csv --instruction "merge and validate schema"
-```
-
-### Headless
-
-```bash
-vesper -n --file data.csv
-```
 
 ---
 
 ## Configuration
 
 ```bash
-export VESPER_LLM="openai/gpt-4o"
+export VESPER_LLM="google/gemeni-pro-latest"
 export LLM_API_KEY="your-api-key"
 export LLM_API_BASE="local-endpoint"
 export VESPER_REASONING="high"
@@ -211,7 +179,7 @@ Built with:
 - Pandas  
 - OpenAI  
 - LiteLLM  
-- DuckDB  
+
 
 > [!WARNING]
 > Always review AI-applied transformations before production use.
