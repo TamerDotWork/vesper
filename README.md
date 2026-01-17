@@ -66,7 +66,7 @@ load → clean → analyze → validate → score → explain
 ### Installation
 
 ```bash
-# download source code
+# download source code and access directory
 git clone https://github.com/TamerDotWork/vesper
 cd vesper
 
