@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Data Quality Agent</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 h-screen flex items-center justify-center">
+
+    <div class="bg-white p-8 rounded-lg shadow-lg w-96 text-center">
+        <h1 class="text-2xl font-bold mb-4 text-gray-800">Data Quality Check</h1>
+        <p class="text-gray-600 mb-6">Upload your CSV to analyze it with Gemini AI.</p>
+        
+        <form id="uploadForm" class="space-y-4">
+            <input type="file" id="csvFile" accept=".csv" required
+                class="block w-full text-sm text-gray-500
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-full file:border-0
+                file:text-sm file:font-semibold
+                file:bg-blue-50 file:text-blue-700
+                hover:file:bg-blue-100"/>
+            
+            <button type="submit" id="analyzeBtn"
+                class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700 transition">
+                Analyze Data
+            </button>
+        </form>
+
+        <div id="loading" class="hidden mt-4">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+            <p class="text-sm text-gray-500 mt-2">AI Agent is thinking...</p>
+        </div>
+        
+        <p id="errorMsg" class="text-red-500 mt-4 text-sm hidden"></p>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const fileInput = document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('analyzeBtn').disabled = true;
+            document.getElementById('errorMsg').classList.add('hidden');
+
+            try {
+                // Call the API endpoint
+                const response = await fetch('/api/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                // Store data in LocalStorage to pass to dashboard
+                localStorage.setItem('analysisResult', JSON.stringify(data));
+                
+                // Redirect to dashboard
+                window.location.href = '/dashboard';
+
+            } catch (error) {
+                document.getElementById('errorMsg').textContent = error.message;
+                document.getElementById('errorMsg').classList.remove('hidden');
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('analyzeBtn').disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Quality | Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f8f9fa; }
+        .score-box { width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 2rem; margin: 0 auto; }
+        .bg-good { background-color: #198754; }
+        .bg-avg { background-color: #fd7e14; }
+        .bg-bad { background-color: #dc3545; }
+        .card { border: none; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .metric-value { font-size: 2rem; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1"><i class="bi bi-activity me-2"></i>Analysis Results</span>
+            <a href="/" class="btn btn-outline-light btn-sm">New Scan</a>
+        </div>
+    </nav>
+
+    <div class="container pb-5" id="main-container" style="display:none;">
+        
+        <!-- Header Info -->
+        <div class="row align-items-center mb-4">
+            <div class="col-md-8">
+                <h2 id="filename">Dataset</h2>
+                <p class="text-muted">
+                    <span id="row-count" class="fw-bold">0</span> Rows | 
+                    <span id="col-count" class="fw-bold">0</span> Columns
+                </p>
+            </div>
+            <div class="col-md-4 text-center">
+                <div class="card p-3">
+                    <h6 class="text-muted text-uppercase small">Quality Score</h6>
+                    <div id="score-circle" class="score-box bg-secondary">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KPI Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card h-100 p-3 border-start border-4 border-info">
+                    <small class="text-muted">Completeness</small>
+                    <div class="metric-value" id="val-completeness">0%</div>
+                    <small class="text-secondary" id="txt-missing">0 missing</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100 p-3 border-start border-4 border-warning">
+                    <small class="text-muted">Validity</small>
+                    <div class="metric-value" id="val-validity">0%</div>
+                    <small class="text-secondary" id="txt-invalid">0 invalid</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100 p-3 border-start border-4 border-success">
+                    <small class="text-muted">Uniqueness</small>
+                    <div class="metric-value" id="val-uniqueness">0%</div>
+                    <small class="text-secondary" id="txt-dups">0 duplicates</small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card h-100 p-3 border-start border-4 border-primary">
+                    <small class="text-muted">Schema Health</small>
+                    <div class="metric-value" id="val-schema">0%</div>
+                    <small class="text-secondary">Type Consistency</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detail Tables -->
+        <div class="row g-4">
+            
+            <!-- Missing Values -->
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-white fw-bold">Missing Values</div>
+                    <div class="card-body">
+                        <table class="table table-sm table-hover" id="table-missing">
+                            <thead class="table-light"><tr><th>Column</th><th class="text-end">Count</th><th class="text-end">%</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                        <div id="msg-no-missing" class="text-center text-muted py-3 d-none">No missing data found!</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Invalid Data -->
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-white fw-bold">Invalid Logic & Types</div>
+                    <div class="card-body">
+                        <table class="table table-sm table-hover" id="table-invalid">
+                            <thead class="table-light"><tr><th>Column</th><th class="text-end">Count</th><th>Reason</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                        <div id="msg-no-invalid" class="text-center text-muted py-3 d-none">All logic checks passed!</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Outliers -->
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-white fw-bold">Outliers (IQR/Z-Score)</div>
+                    <div class="card-body">
+                        <table class="table table-sm table-hover" id="table-outliers">
+                            <thead class="table-light"><tr><th>Column</th><th class="text-end">Outlier Count</th></tr></thead>
+                            <tbody></tbody>
+                        </table>
+                        <div id="msg-no-outliers" class="text-center text-muted py-3 d-none">No significant outliers.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Correlations -->
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-header bg-white fw-bold">Strong Correlations (> 0.5)</div>
+                    <div class="card-body">
+                        <ul class="list-group list-group-flush" id="list-corr"></ul>
+                        <div id="msg-no-corr" class="text-center text-muted py-3 d-none">No strong correlations.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+
+    <!-- Logic Script -->
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // 1. Retrieve Data
+            const rawData = sessionStorage.getItem('dqResult');
+            
+            if (!rawData) {
+                alert("No data found. Redirecting to upload.");
+                window.location.href = "/";
+                return;
+            }
+
+            const data = JSON.parse(rawData);
+            const scans = data.scans;
+            
+            // 2. Populate Header
+            document.getElementById('filename').textContent = data.dataset_name;
+            document.getElementById('row-count').textContent = data.row_count.toLocaleString();
+            document.getElementById('col-count').textContent = data.column_count;
+            document.getElementById('main-container').style.display = 'block';
+
+            // 3. Populate Score
+            const score = scans.quality_score.score;
+            const scoreEl = document.getElementById('score-circle');
+            scoreEl.textContent = Math.round(score);
+            scoreEl.className = `score-box ${score > 80 ? 'bg-good' : score > 50 ? 'bg-avg' : 'bg-bad'}`;
+
+            // 4. Populate KPIs
+            const comps = scans.quality_score.components;
+            document.getElementById('val-completeness').textContent = comps.completeness_pct + '%';
+            document.getElementById('txt-missing').textContent = scans.missing.total_missing + ' missing';
+
+            document.getElementById('val-validity').textContent = comps.validity_pct + '%';
+            document.getElementById('txt-invalid').textContent = scans.invalid.total_invalid + ' issues';
+
+            document.getElementById('val-uniqueness').textContent = comps.uniqueness_pct + '%';
+            document.getElementById('txt-dups').textContent = scans.duplicates.duplicate_count + ' dups';
+
+            document.getElementById('val-schema').textContent = comps.schema_pct + '%';
+
+            // 5. Fill Tables
+            fillTable('table-missing', 'msg-no-missing', scans.missing.details, (key, val) => `
+                <td>${key}</td>
+                <td class="text-end text-danger">${val.missing_count}</td>
+                <td class="text-end">${val.missing_pct}%</td>
+            `);
+
+            fillTable('table-invalid', 'msg-no-invalid', scans.invalid.invalid_by_field, (key, val) => `
+                <td class="fw-bold">${key}</td>
+                <td class="text-end text-danger">${val.count}</td>
+                <td><small>${val.reason}</small></td>
+            `);
+
+            fillTable('table-outliers', 'msg-no-outliers', scans.outliers.columns, (key, val) => `
+                <td>${key}</td>
+                <td class="text-end text-warning fw-bold">${val.outlier_count}</td>
+            `);
+
+            // 6. Fill Correlation List
+            const corrList = document.getElementById('list-corr');
+            const pairs = scans.correlation.pairs;
+            if (Object.keys(pairs).length > 0) {
+                document.getElementById('msg-no-corr').classList.add('d-none');
+                for (const [key, val] of Object.entries(pairs)) {
+                    const [c1, c2] = key.split('__');
+                    corrList.innerHTML += `
+                        <li class="list-group-item d-flex justify-content-between">
+                            <small>${c1} ↔ ${c2}</small>
+                            <span class="badge bg-secondary rounded-pill">${val}</span>
+                        </li>`;
+                }
+            } else {
+                document.getElementById('msg-no-corr').classList.remove('d-none');
+            }
+        });
+
+        // Helper to populate tables
+        function fillTable(tableId, emptyMsgId, dataObj, rowGenerator) {
+            const tbody = document.querySelector(`#${tableId} tbody`);
+            const emptyMsg = document.getElementById(emptyMsgId);
+            
+            tbody.innerHTML = '';
+            const keys = Object.keys(dataObj);
+
+            if (keys.length > 0) {
+                emptyMsg.classList.add('d-none');
+                keys.forEach(key => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = rowGenerator(key, dataObj[key]);
+                    tbody.appendChild(tr);
+                });
+            } else {
+                emptyMsg.classList.remove('d-none');
+            }
+        }
+    </script>
+</body>
+</html>
