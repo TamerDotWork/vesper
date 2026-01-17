@@ -86,13 +86,13 @@ export LLM_API_KEY="your-api-key"
 ```
 
 > [!NOTE]
-> Results are stored in vesper_runs with full logs.
+> Results are stored in full logs.
 
 ---
 
-## Run Vesper in Cloud
+## Try Vesper in production
 
-Use the hosted platform at **app.vesper.ai** with:
+Use the hosted version at **ai.tamer.work/vesper** with:
 
 - Quality scorecard  
 - Explainable actions  
