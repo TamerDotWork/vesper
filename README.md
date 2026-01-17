@@ -74,13 +74,6 @@ cd vesper
 python -m venv venv
 
 # activation
-
-# Windows
-venv\Scripts\activate
-
-# or
-
-# Mac / Linux
 source venv/bin/activate
 
 # install dependencies
