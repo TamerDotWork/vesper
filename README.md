@@ -86,8 +86,10 @@ python app.py
 ### First Run
 
 ```bash
-export VESPER_LLM="google/gemeni-pro-latest"
-export LLM_API_KEY="your-api-key"
+# Copy template:
+cp .env.example .env
+# Edit env
+GOOGLE_API_KEY=your_google_api_key_here
 
 ```
 
@@ -135,15 +137,6 @@ Analyze your dataset at the platform website.
 
 
 ---
-
-## Configuration
-
-```bash
-export VESPER_LLM="google/gemeni-pro-latest"
-export LLM_API_KEY="your-api-key"
-export VESPER_BASE="localhost"
-export VESPER_PORT="5000"
-```
 
 Recommended models:
 
