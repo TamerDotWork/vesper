@@ -1,4 +1,8 @@
 
+
+<div align="center">
+  <img src="https://github.com/TamerDotWork/vesper/blob/main/cover.jpg" alt="Vesper Demo" width="auto" style="border-radius: 16px;">
+</div>
 <div align="center">
 
 # Vesper
