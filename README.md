@@ -102,20 +102,6 @@ GOOGLE_AoPI_KEY=your_google_api_key_here
 
 ---
 
-## Try Vesper in production
-
-Use the hosted version at **ai.tamer.work/vesper** with:
-
-- Quality scorecard  
-- Explainable actions  
-- Clean dataset download  
-- Team dashboards  
-- API automation  
-
-Analyze your dataset at the platform website.
-
----
-
 ## Features
 
 ### Agentic Data Tools
