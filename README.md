@@ -90,7 +90,7 @@ python app.py
 ### First Run
 
 ```bash
-# cpy template
+# copy template
 cp .env.example .env
 # edit env
 GOOGLE_AoPI_KEY=your_google_api_key_here
